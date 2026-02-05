@@ -2,9 +2,37 @@ let currentSessionId = null;
 let currentSessionType = 'table';
 let autoSaveTimer = null;
 
+// Queue and Editor variables
+let fileQueue = [];
+let currentProcessingFile = null;
+let cropper = null;
+let editorModal = null;
+let shouldProcessNextOnHide = false;
+
 document.addEventListener("DOMContentLoaded", () => {
     loadHistory();
     
+    // Initialize Modal
+    const modalEl = document.getElementById('imageEditorModal');
+    if (modalEl) {
+        editorModal = new bootstrap.Modal(modalEl, { keyboard: false });
+        
+        // Handle modal hidden event to safely transition
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+            // Clear the image source to prevent flickering next time
+            document.getElementById('image-to-edit').src = "";
+            
+            if (shouldProcessNextOnHide) {
+                shouldProcessNextOnHide = false; // Reset
+                processNextInQueue();
+            }
+        });
+    }
+
     // File Input Listener
     const fileInput = document.getElementById('fileInput');
     if(fileInput) {
@@ -35,44 +63,133 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-async function handleFiles(files) {
-    console.log("Processing files...", files);
+function handleFiles(files) {
     if (!files.length) return;
     
+    // Add files to queue
+    for (let file of files) {
+        fileQueue.push(file);
+    }
+    
+    // If not currently processing, start
+    if (!currentProcessingFile) {
+        processNextInQueue();
+    }
+}
+
+function processNextInQueue() {
+    if (fileQueue.length === 0) {
+        currentProcessingFile = null;
+        // All done
+        document.getElementById('loader').style.display = 'none';
+        return;
+    }
+    
+    currentProcessingFile = fileQueue.shift();
+    showEditor(currentProcessingFile);
+}
+
+function showEditor(file) {
+    const img = document.getElementById('image-to-edit');
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+        img.src = e.target.result;
+        
+        // Default action on hide is to process next (cancel behavior)
+        // Unless explicitly set to false by skip/process
+        shouldProcessNextOnHide = true; 
+        
+        // Show modal
+        editorModal.show();
+        
+        // Init Cropper (wait for modal transition or just init)
+        if (cropper) cropper.destroy();
+        
+        // Small timeout to ensure image is rendered in modal
+        setTimeout(() => {
+            cropper = new Cropper(img, {
+                viewMode: 1,
+                autoCropArea: 1,
+                responsive: true
+            });
+        }, 200);
+    };
+    
+    reader.readAsDataURL(file);
+}
+
+// Editor Actions
+function rotateImage(deg) {
+    if(cropper) cropper.rotate(deg);
+}
+
+function resetCropper() {
+    if(cropper) cropper.reset();
+}
+
+function cancelCurrentFile() {
+    // Flag is already true by default from showEditor
+    editorModal.hide();
+}
+
+function skipCurrentFile() {
+    if (!currentProcessingFile) return;
+    shouldProcessNextOnHide = false; // We will handle next step manually via uploadFile
+    editorModal.hide();
+    // Upload original
+    uploadFile(currentProcessingFile);
+}
+
+function processAndUpload() {
+    if (!cropper || !currentProcessingFile) return;
+    
+    cropper.getCroppedCanvas().toBlob((blob) => {
+        // Create a new file object or just use blob
+        const processedFile = new File([blob], currentProcessingFile.name, { type: "image/jpeg" });
+        
+        shouldProcessNextOnHide = false; // We will handle next step manually via uploadFile
+        editorModal.hide();
+        
+        uploadFile(processedFile);
+    }, 'image/jpeg');
+}
+
+
+async function uploadFile(file) {
     const loader = document.getElementById('loader');
     const uploadZone = document.getElementById('upload-zone');
     
     loader.style.display = 'block';
     
-    for (let file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('type', currentSessionType);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', currentSessionType);
+    
+    try {
+        const response = await fetch('/ocr', {
+            method: 'POST',
+            body: formData
+        });
         
-        try {
-            const response = await fetch('/ocr', {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'OCR Failed');
-            }
-            
-            const data = await response.json();
-            addTableToWorkspace(data.html, data.filename);
-            
-        } catch (err) {
-            console.error(err);
-            alert(`Error processing ${file.name}: ${err.message}`);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'OCR Failed');
         }
+        
+        const data = await response.json();
+        addTableToWorkspace(data.html, data.filename);
+        
+    } catch (err) {
+        console.error(err);
+        alert(`Error processing ${file.name}: ${err.message}`);
     }
     
-    loader.style.display = 'none';
-    uploadZone.style.display = 'none'; // Hide big dropzone after first upload
+    uploadZone.style.display = 'none';
+    autoSave();
     
-    autoSave(); // Trigger save after adding files
+    // Process next
+    processNextInQueue();
 }
 
 function addTableToWorkspace(htmlContent, title = "Table") {
