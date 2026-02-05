@@ -1,4 +1,4 @@
-# GLM-OCR Table Recognition Tool
+# glm-ocr-interface
 
 A lightweight web application built with FastAPI that leverages the [GLM-OCR](https://huggingface.co/zai-org/GLM-OCR) model to perform Optical Character Recognition (OCR), specifically optimized for extracting and reconstructing tables from images.
 
