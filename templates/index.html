@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLM Table Extractor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        
+        /* Desktop Layout */
+        @media (min-width: 768px) {
+            .sidebar { height: 100vh; overflow-y: auto; border-right: 1px solid #dee2e6; }
+            .workspace { height: 100vh; overflow-y: auto; }
+        }
+        
+        /* Mobile Layout */
+        @media (max-width: 767.98px) {
+            .sidebar { max-height: 40vh; overflow-y: auto; border-bottom: 1px solid #dee2e6; }
+            .workspace { height: auto; overflow-y: visible; padding: 10px; }
+            .table-container { padding: 10px; }
+            .upload-zone { padding: 20px; }
+        }
+
+        .sidebar { background: white; }
+        .workspace { padding: 20px; }
+        .table-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; position: relative; }
+        .table-container table { width: 100%; }
+        .upload-zone { border: 2px dashed #dee2e6; border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; transition: 0.3s; background: white; }
+        .upload-zone:hover { border-color: #0d6efd; background-color: #f1f8ff; }
+        .editable-cell { cursor: text; }
+        .editable-cell:focus { outline: 2px solid #86b7fe; background: #fff; }
+        /* Style the raw html output from model to look decent */
+        .generated-content table {
+            width: 100%;
+            margin-bottom: 1rem;
+            color: #212529;
+            vertical-align: top;
+            border-color: #dee2e6;
+        }
+        .generated-content table th,
+        .generated-content table td {
+            padding: 0.75rem;
+            vertical-align: top;
+            border-top: 1px solid #dee2e6;
+        }
+        .generated-content table thead th {
+            vertical-align: bottom;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .generated-content table tbody + tbody {
+            border-top: 2px solid #dee2e6;
+        }
+        .generated-content table-bordered {
+            border: 1px solid #dee2e6;
+        }
+        .generated-content table-bordered th,
+        .generated-content table-bordered td {
+            border: 1px solid #dee2e6;
+        }
+        
+        .selected-table { border: 2px solid #0d6efd; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-3 col-lg-2 sidebar p-3">
+            <h5 class="mb-3"><i class="bi bi-table"></i> GLM OCR</h5>
+            <button class="btn btn-primary w-100 mb-3" data-bs-toggle="modal" data-bs-target="#newSessionModal">
+                <i class="bi bi-plus-lg"></i> New Session
+            </button>
+            <h6 class="text-muted text-uppercase small">Saved Tables</h6>
+            <div id="history-list" class="list-group list-group-flush">
+                <!-- History items will be injected here -->
+            </div>
+        </div>
+
+        <!-- Main Workspace -->
+        <div class="col-md-9 col-lg-10 workspace">
+            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+                <h4 id="session-title" class="mb-0">Untitled Session</h4>
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-outline-secondary" onclick="document.getElementById('fileInput').click()">
+                        <i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Add Image</span>
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="mergeSelectedTables()">
+                        <i class="bi bi-arrows-collapse"></i> <span class="d-none d-sm-inline">Merge</span>
+                    </button>
+                    <button class="btn btn-success" onclick="saveCurrentWork()">
+                        <i class="bi bi-save"></i> <span class="d-none d-sm-inline">Save</span>
+                    </button>
+                    <button class="btn btn-outline-dark" onclick="exportToCSV()">
+                        <i class="bi bi-filetype-csv"></i> <span class="d-none d-sm-inline">CSV</span>
+                    </button>
+                    <button class="btn btn-outline-dark" onclick="exportToTXT()">
+                        <i class="bi bi-file-text"></i> <span class="d-none d-sm-inline">TXT</span>
+                    </button>
+                </div>
+            </div>
+
+            <input type="file" id="fileInput" multiple accept="image/*" style="display: none">
+
+            <!-- Empty State -->
+            <div id="upload-zone" class="upload-zone mb-4" onclick="document.getElementById('fileInput').click()">
+                <i class="bi bi-cloud-arrow-up display-4 text-muted"></i>
+                <p class="mt-2 text-muted">Drag & Drop images here or click to upload</p>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loader" class="text-center py-5" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p id="loader-text" class="mt-2 text-muted">Extracting tables...</p>
+            </div>
+
+            <!-- Tables Container -->
+            <div id="tables-wrapper">
+                <!-- Extracted tables will be appended here -->
+            </div>
+            
+        </div>
+    </div>
+</div>
+
+<!-- New Session Modal -->
+<div class="modal fade" id="newSessionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Start New Session</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Choose the type of recognition you want to perform:</p>
+        <div class="d-grid gap-2">
+            <button class="btn btn-outline-primary p-3 text-start" onclick="startNewSession('table')" data-bs-dismiss="modal">
+                <i class="bi bi-table fs-4 me-2"></i>
+                <strong>Table Recognition</strong>
+                <div class="small text-muted">Optimized for extracting structured tables.</div>
+            </button>
+            <button class="btn btn-outline-secondary p-3 text-start" onclick="startNewSession('text')" data-bs-dismiss="modal">
+                <i class="bi bi-file-text fs-4 me-2"></i>
+                <strong>Table Extraction (Text)</strong>
+                <div class="small text-muted">Use text prompt for extraction.</div>
+            </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/script.js"></script>
+</body>
+</html>
