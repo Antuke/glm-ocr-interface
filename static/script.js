@@ -11,6 +11,10 @@ let shouldProcessNextOnHide = false;
 let currentAbortController = null;
 
 document.addEventListener("DOMContentLoaded", () => {
+    // Load Theme
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    setTheme(savedTheme);
+
     loadHistory();
     
     // Initialize Modal
@@ -613,5 +617,25 @@ async function checkGPUStatus() {
         
     } catch (e) {
         modalBody.innerHTML = `<div class="alert alert-danger">Failed to fetch GPU status: ${e.message}</div>`;
+    }
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+}
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-bs-theme', theme);
+    localStorage.setItem('theme', theme);
+    
+    const btn = document.getElementById('themeToggleBtn');
+    if (btn) {
+        if (theme === 'dark') {
+            btn.innerHTML = '<i class="bi bi-sun"></i> Light Mode';
+        } else {
+            btn.innerHTML = '<i class="bi bi-moon"></i> Dark Mode';
+        }
     }
 }
