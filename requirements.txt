@@ -5,3 +5,5 @@ jinja2
 torch
 transformers
 pillow
+nvidia-ml-py
+accelerate

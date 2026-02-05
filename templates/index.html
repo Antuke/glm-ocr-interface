@@ -74,6 +74,9 @@
             <button class="btn btn-primary w-100 mb-3" data-bs-toggle="modal" data-bs-target="#newSessionModal">
                 <i class="bi bi-plus-lg"></i> New Session
             </button>
+            <button class="btn btn-outline-secondary w-100 mb-3" onclick="checkGPUStatus()">
+                <i class="bi bi-cpu"></i> GPU Status
+            </button>
             <h6 class="text-muted text-uppercase small">Saved Tables</h6>
             <div id="history-list" class="list-group list-group-flush">
                 <!-- History items will be injected here -->
@@ -117,6 +120,9 @@
                     <span class="visually-hidden">Loading...</span>
                 </div>
                 <p id="loader-text" class="mt-2 text-muted">Extracting tables...</p>
+                <button class="btn btn-outline-danger btn-sm mt-3" onclick="cancelProcessing()">
+                    <i class="bi bi-x-circle"></i> Stop Processing
+                </button>
             </div>
 
             <!-- Tables Container -->
@@ -184,6 +190,28 @@
             <button type="button" class="btn btn-secondary" onclick="skipCurrentFile()">Skip & Upload Original</button>
             <button type="button" class="btn btn-primary" onclick="processAndUpload()">Process & Upload</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GPU Status Modal -->
+<div class="modal fade" id="gpuStatusModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">System Status</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="gpu-status-content">
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p>Fetching GPU info...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="checkGPUStatus()">Refresh</button>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>

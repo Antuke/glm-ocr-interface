@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.concurrency import run_in_threadpool
 import shutil
 import os
 import uuid
@@ -54,14 +55,54 @@ async def process_image(file: UploadFile = File(...), type: str = Form("table"))
             shutil.copyfileobj(file.file, buffer)
             
         print(f"Processing image: {file_path} with mode: {type}")
-        # Run inference
-        result_html = ocr_model.process_image(file_path, type=type)
+        # Run inference in threadpool to allow concurrency (e.g. for cancel request)
+        result_html = await run_in_threadpool(ocr_model.process_image, file_path, type=type)
+        
+        if result_html == "<!-- Process Aborted -->":
+            raise HTTPException(status_code=499, detail="Processing aborted by user")
+            
         return {"id": file_id, "html": result_html, "filename": file.filename}
+    except HTTPException as he:
+        raise he
     except Exception as e:
         import traceback
         traceback.print_exc()
         # Return the actual error message to the client
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+@app.post("/cancel")
+async def cancel_processing():
+    if ocr_model:
+        ocr_model.abort_event.set()
+        return {"status": "cancelled"}
+    return {"status": "no model"}
+
+@app.get("/gpu")
+async def get_gpu_status():
+    import torch
+    status = {
+        "available": torch.cuda.is_available(),
+        "device_count": torch.cuda.device_count(),
+        "info": []
+    }
+    
+    if status["available"]:
+        for i in range(status["device_count"]):
+            props = torch.cuda.get_device_properties(i)
+            # Memory in MB
+            total_mem = props.total_memory / 1024**2
+            reserved_mem = torch.cuda.memory_reserved(i) / 1024**2
+            allocated_mem = torch.cuda.memory_allocated(i) / 1024**2
+            free_mem = total_mem - reserved_mem # Approximation of free memory in terms of reservation
+            
+            status["info"].append({
+                "name": props.name,
+                "total_memory": f"{total_mem:.0f} MB",
+                "reserved_memory": f"{reserved_mem:.0f} MB",
+                "allocated_memory": f"{allocated_mem:.0f} MB",
+                "utilization": f"{(reserved_mem/total_mem)*100:.1f}%"
+            })
+    return status
 
 @app.post("/save")
 async def save_table(data: dict):

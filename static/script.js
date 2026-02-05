@@ -8,6 +8,7 @@ let currentProcessingFile = null;
 let cropper = null;
 let editorModal = null;
 let shouldProcessNextOnHide = false;
+let currentAbortController = null;
 
 document.addEventListener("DOMContentLoaded", () => {
     loadHistory();
@@ -155,6 +156,29 @@ function processAndUpload() {
     }, 'image/jpeg');
 }
 
+function cancelProcessing() {
+    // 0. Signal backend to stop (Free GPU)
+    fetch('/cancel', { method: 'POST' }).catch(e => console.error("Failed to signal cancel to backend", e));
+
+    // 1. Abort current request
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+    }
+    
+    // 2. Clear Queue
+    fileQueue = [];
+    currentProcessingFile = null;
+    
+    // 3. Reset UI
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('upload-zone').style.display = 'none'; // Keep hidden if we have content, or check wrapper
+    if (document.getElementById('tables-wrapper').innerHTML.trim() === "") {
+        document.getElementById('upload-zone').style.display = 'block';
+    }
+    
+    console.log("Processing cancelled by user.");
+}
 
 async function uploadFile(file) {
     const loader = document.getElementById('loader');
@@ -166,10 +190,13 @@ async function uploadFile(file) {
     formData.append('file', file);
     formData.append('type', currentSessionType);
     
+    currentAbortController = new AbortController();
+    
     try {
         const response = await fetch('/ocr', {
             method: 'POST',
-            body: formData
+            body: formData,
+            signal: currentAbortController.signal
         });
         
         if (!response.ok) {
@@ -181,8 +208,14 @@ async function uploadFile(file) {
         addTableToWorkspace(data.html, data.filename);
         
     } catch (err) {
+        if (err.name === 'AbortError') {
+            console.log('Upload aborted');
+            return; // Exit cleanly
+        }
         console.error(err);
         alert(`Error processing ${file.name}: ${err.message}`);
+    } finally {
+        currentAbortController = null;
     }
     
     uploadZone.style.display = 'none';
@@ -514,4 +547,71 @@ function exportToTXT() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+}
+
+async function checkGPUStatus() {
+    const modalEl = document.getElementById('gpuStatusModal');
+    const modalBody = document.getElementById('gpu-status-content');
+    
+    // Show modal if not already open (using Bootstrap API)
+    let modalInstance = bootstrap.Modal.getInstance(modalEl);
+    if (!modalInstance) {
+        modalInstance = new bootstrap.Modal(modalEl);
+        modalInstance.show();
+    } else if (!modalEl.classList.contains('show')) {
+        modalInstance.show();
+    }
+    
+    modalBody.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p>Fetching GPU info...</p>
+        </div>
+    `;
+    
+    try {
+        const response = await fetch('/gpu');
+        const data = await response.json();
+        
+        if (!data.available) {
+            modalBody.innerHTML = `<div class="alert alert-warning">No CUDA GPU available on server.</div>`;
+            return;
+        }
+        
+        let html = '';
+        data.info.forEach((gpu, idx) => {
+            html += `
+                <div class="card mb-3">
+                    <div class="card-header fw-bold">GPU ${idx}: ${gpu.name}</div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <label class="small text-muted">Memory Usage (Reserved / Total)</label>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: ${gpu.utilization};" aria-valuenow="${parseFloat(gpu.utilization)}" aria-valuemin="0" aria-valuemax="100">${gpu.utilization}</div>
+                            </div>
+                        </div>
+                        <ul class="list-group list-group-flush small">
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>Total Memory</span>
+                                <strong>${gpu.total_memory}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>Reserved</span>
+                                <strong>${gpu.reserved_memory}</strong>
+                            </li>
+                             <li class="list-group-item d-flex justify-content-between">
+                                <span>Allocated</span>
+                                <strong>${gpu.allocated_memory}</strong>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+        });
+        
+        modalBody.innerHTML = html;
+        
+    } catch (e) {
+        modalBody.innerHTML = `<div class="alert alert-danger">Failed to fetch GPU status: ${e.message}</div>`;
+    }
 }
