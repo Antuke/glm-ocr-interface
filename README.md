@@ -28,7 +28,7 @@ A comprehensive web interface built with FastAPI that leverages the [GLM-OCR](ht
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/Antuke/glm-ocr-interface
     cd glm-ocr-interface
     ```
 
