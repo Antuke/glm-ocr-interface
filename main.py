@@ -1,3 +1,4 @@
+from fastapi import FastAPI
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -8,8 +9,25 @@ import os
 import uuid
 from datetime import datetime
 from glm import GLMOCR
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+
+# Global model instance
+ocr_model = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global ocr_model
+    try:
+        ocr_model = GLMOCR()
+        print("GLM-OCR Model loaded successfully.")
+    except Exception as e:
+        print(f"Failed to load model: {e}")
+    yield 
+    print('=== Closing ===')
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -23,17 +41,10 @@ DATA_DIR = "data"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Global model instance
-ocr_model = None
 
-@app.on_event("startup")
-async def startup_event():
-    global ocr_model
-    try:
-        ocr_model = GLMOCR()
-        print("GLM-OCR Model loaded successfully.")
-    except Exception as e:
-        print(f"Failed to load model: {e}")
+
+
+
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -174,5 +185,4 @@ async def get_history():
 
 if __name__ == "__main__":
     import uvicorn
-    # Host 0.0.0.0 makes the server accessible from other devices on the network
     uvicorn.run(app, host="0.0.0.0", port=4444)
