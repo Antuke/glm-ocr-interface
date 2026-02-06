@@ -16,7 +16,7 @@ A comprehensive web interface built with FastAPI that leverages the [GLM-OCR](ht
   - Export tables to **CSV**.
   - Export text to **TXT**.
   - Save sessions internally (JSON) to resume work later.
-- **History Viewer:** Browse, load, and manage previously saved extraction tasks.
+- **No Internet Required:** All frontend dependencies (Bootstrap, Cropper.js, Icons) are bundled locally for complete offline operation.
 
 ## 🛠️ Prerequisites
 
@@ -50,12 +50,14 @@ A comprehensive web interface built with FastAPI that leverages the [GLM-OCR](ht
     ```bash
     uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ```
+    *Note: The first time you run the application, it will automatically download the GLM-OCR model (~several GBs) from Hugging Face. *
 
 2.  **Access the Interface:**
     Open your web browser and navigate to:
     ```
     http://localhost:8000
     ```
+
 
 3.  **Workflow:**
     - Click **New Session** and choose your mode (Table or Text).
