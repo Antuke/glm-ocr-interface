@@ -217,7 +217,15 @@ async function uploadFile(file) {
             currentSessionId = newSessionId;
         }
 
-        const contentElement = addTableToWorkspace('', filename);
+        // Construct Image URL
+        let imageUrl = null;
+        const fileId = response.headers.get('X-File-ID');
+        if (currentSessionId && fileId) {
+            const ext = filename.split('.').pop();
+            imageUrl = `/uploads/${currentSessionId}/${fileId}.${ext}`;
+        }
+
+        const contentElement = addTableToWorkspace('', filename, imageUrl);
         
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -273,7 +281,7 @@ async function uploadFile(file) {
     processNextInQueue();
 }
 
-function addTableToWorkspace(htmlContent, title = "Table") {
+function addTableToWorkspace(htmlContent, title = "Table", imageUrl = null) {
     const wrapper = document.getElementById('tables-wrapper');
     const id = 'tbl-' + Date.now() + Math.random().toString(36).substr(2, 9);
     
@@ -290,6 +298,12 @@ function addTableToWorkspace(htmlContent, title = "Table") {
         contentHtml = `<div class="table-responsive table-content">${htmlContent}</div>`;
     }
     
+    // Image Button
+    let imageBtnHtml = '';
+    if (imageUrl) {
+        imageBtnHtml = `<button class="btn btn-sm btn-outline-info me-1" onclick="showImageModal('${imageUrl}')" title="View Original Image"><i class="bi bi-eye"></i></button>`;
+    }
+    
     // Header for the block
     div.innerHTML = `
         <div class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2">
@@ -297,7 +311,10 @@ function addTableToWorkspace(htmlContent, title = "Table") {
                 <input class="form-check-input table-selector" type="checkbox" value="${id}" id="check-${id}">
                 <label class="form-check-label fw-bold" for="check-${id}">${title}</label>
             </div>
-            <button class="btn btn-sm btn-outline-danger" onclick="removeTable('${id}')"><i class="bi bi-trash"></i></button>
+            <div>
+                ${imageBtnHtml}
+                <button class="btn btn-sm btn-outline-danger" onclick="removeTable('${id}')"><i class="bi bi-trash"></i></button>
+            </div>
         </div>
         ${contentHtml}
     `;
@@ -305,6 +322,14 @@ function addTableToWorkspace(htmlContent, title = "Table") {
     wrapper.appendChild(div);
     makeEditable(div);
     return div.querySelector('.text-content') || div.querySelector('.table-content');
+}
+
+function showImageModal(url) {
+    const img = document.getElementById('image-to-view');
+    img.src = url;
+    const modalEl = document.getElementById('viewImageModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
 }
 
 function makeEditable(container) {

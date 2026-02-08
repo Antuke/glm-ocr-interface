@@ -139,3 +139,35 @@ def test_cancel_endpoint(client):
     response = client.post("/cancel")
     assert response.status_code == 200
     assert response.json()["status"] == "cancelled"
+
+def test_image_serving(client):
+    filename = "hand_written_table.jpg"
+    file_path = os.path.join("test_images", filename)
+    
+    if not os.path.exists(file_path):
+        pytest.skip(f"Test image {filename} not found")
+
+    # 1. Upload
+    with open(file_path, "rb") as f:
+        response = client.post(
+            "/ocr",
+            files={"file": (filename, f, "image/jpeg")},
+            data={"type": "table"}
+        )
+    
+    assert response.status_code == 200
+    session_id = response.headers["X-Session-ID"]
+    file_id = response.headers["X-File-ID"]
+    # The filename in header is original filename
+    ext = filename.split(".")[-1]
+    
+    # 2. Construct URL
+    image_url = f"/uploads/{session_id}/{file_id}.{ext}"
+    
+    # 3. Access Image
+    response = client.get(image_url)
+    assert response.status_code == 200
+    assert "image" in response.headers["content-type"]
+    
+    # Clean up
+    shutil.rmtree(os.path.join("uploads", session_id))
