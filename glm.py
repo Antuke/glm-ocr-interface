@@ -3,6 +3,7 @@ import torch
 import os
 import threading
 import time
+from datetime import datetime
 from PIL import Image
 
 class AbortCriteria(StoppingCriteria):
@@ -179,6 +180,20 @@ class GLMOCR:
             print(f"\n[METRICS] Image: {image_size_str} | Mode: {type}")
             print(f"[METRICS] TTFT: {ttft:.4f}s | Total Time: {total_time:.4f}s")
             print(f"[METRICS] Tokens: {token_count} | TPS: {tps:.2f} tokens/s")
+            
+            # Log to file
+            log_file = "performance.log"
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_entry = (
+                f"[{timestamp}] Image: {image_size_str} | Mode: {type} | "
+                f"TTFT: {ttft:.4f}s | Total: {total_time:.4f}s | "
+                f"Tokens: {token_count} | TPS: {tps:.2f}\n"
+            )
+            try:
+                with open(log_file, "a") as f:
+                    f.write(log_entry)
+            except Exception as e:
+                print(f"Failed to write to {log_file}: {e}")
         else:
              print(f"\n[METRICS] No tokens generated. Total Time: {total_time:.4f}s")
 
