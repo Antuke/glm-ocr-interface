@@ -48,7 +48,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="index.html")
 
 @app.post("/ocr")
 async def process_image(file: UploadFile = File(...), type: str = Form("table")):
