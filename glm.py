@@ -2,6 +2,8 @@ from transformers import AutoProcessor, AutoModelForImageTextToText, StoppingCri
 import torch
 import os
 import threading
+import time
+from PIL import Image
 
 class AbortCriteria(StoppingCriteria):
     def __init__(self, abort_event):
@@ -78,6 +80,19 @@ class GLMOCR:
         return output_text
 
     def process_image_stream(self, image_path, type="table"):
+        # Metrics initialization
+        start_time = time.time()
+        first_token_time = None
+        full_text = ""
+        
+        # Get Image Dimensions
+        try:
+            with Image.open(image_path) as img:
+                width, height = img.size
+                image_size_str = f"{height}x{width}"
+        except Exception:
+            image_size_str = "Unknown"
+
         # Reset abort event at start of processing
         self.abort_event.clear()
         
@@ -129,11 +144,43 @@ class GLMOCR:
         thread.start()
 
         for new_text in streamer:
+            if first_token_time is None:
+                first_token_time = time.time()
+            
+            full_text += new_text
+
             if self.abort_event.is_set():
                 print("Generation aborted by user.")
                 yield "<!-- Process Aborted -->"
                 break
             yield new_text
+        
+        # Calculations and Logging
+        end_time = time.time()
+        total_time = end_time - start_time
+        
+        if first_token_time:
+            ttft = first_token_time - start_time
+            generation_time = end_time - first_token_time
+            
+            # Count tokens (Approximate by re-tokenizing)
+            # We use the processor's tokenizer
+            token_ids = self.processor.tokenizer(full_text).input_ids
+            token_count = len(token_ids)
+            
+            # TPS Calculation: (Total Tokens - 1) / Generation Time
+            # We subtract 1 because the first token is generated at `first_token_time`
+            # so the time period `generation_time` covers the generation of the remaining `N-1` tokens.
+            if generation_time > 0 and token_count > 1:
+                tps = (token_count - 1) / generation_time
+            else:
+                tps = 0.0
+                
+            print(f"\n[METRICS] Image: {image_size_str} | Mode: {type}")
+            print(f"[METRICS] TTFT: {ttft:.4f}s | Total Time: {total_time:.4f}s")
+            print(f"[METRICS] Tokens: {token_count} | TPS: {tps:.2f} tokens/s")
+        else:
+             print(f"\n[METRICS] No tokens generated. Total Time: {total_time:.4f}s")
 
 if __name__ == "__main__":
     # Example usage mimicking original script
