@@ -73,23 +73,28 @@ async def process_image(file: UploadFile = File(...), type: str = Form("table"))
                 for chunk in ocr_model.process_image_stream(file_path, type=type):
                     yield chunk
 
-            # We iterate over the sync generator in chunks
-            # Using run_in_threadpool for the whole thing or chunk by chunk?
-            # Iterating a thread-based streamer is safest in a separate thread.
+            # Helper to safely get next item without raising StopIteration across async boundary
+            def safe_next(iterator):
+                try:
+                    return next(iterator)
+                except StopIteration:
+                    return None
+
             import asyncio
-            loop = asyncio.get_event_loop()
             gen = sync_gen()
             
             while True:
                 try:
                     # Get next chunk in a threadpool
-                    chunk = await run_in_threadpool(next, gen)
+                    chunk = await run_in_threadpool(safe_next, gen)
+                    
+                    if chunk is None:
+                        break
+                        
                     if chunk == "<!-- Process Aborted -->":
                         yield chunk
                         break
                     yield chunk
-                except StopIteration:
-                    break
                 except Exception as e:
                     print(f"Streaming error: {e}")
                     yield f"<!-- Error: {str(e)} -->"
@@ -97,7 +102,7 @@ async def process_image(file: UploadFile = File(...), type: str = Form("table"))
 
         return StreamingResponse(
             response_generator(), 
-            media_type="text/plain", 
+            media_type="text/plain",  
             headers={
                 "X-File-ID": file_id,
                 "X-Filename": file.filename,

@@ -131,7 +131,7 @@ class GLMOCR:
         
         inputs.pop("token_type_ids", None)
         
-        streamer = TextIteratorStreamer(self.processor, skip_special_tokens=False, skip_prompt=True)
+        streamer = TextIteratorStreamer(self.processor, skip_special_tokens=True, skip_prompt=True)
         stopping_criteria = StoppingCriteriaList([AbortCriteria(self.abort_event)])
         
         generation_kwargs = dict(
