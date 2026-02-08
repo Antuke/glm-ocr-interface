@@ -49,7 +49,7 @@ A comprehensive web interface built with FastAPI that leverages the [GLM-OCR](ht
 
 1.  **Start the Server:**
     ```bash
-    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    uvicorn main:app --host 0.0.0.0 --port 8000 
     ```
     *Note: The first time you run the application, it will automatically download the GLM-OCR model (~2.5GBs) from Hugging Face. *
 
