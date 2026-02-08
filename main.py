@@ -51,15 +51,25 @@ async def read_root(request: Request):
     return templates.TemplateResponse(request=request, name="index.html")
 
 @app.post("/ocr")
-async def process_image(file: UploadFile = File(...), type: str = Form("table")):
+async def process_image(file: UploadFile = File(...), type: str = Form("table"), session_id: str = Form(None)):
     if not ocr_model:
         raise HTTPException(status_code=503, detail="Model not loaded. Check server logs.")
     
+    # Determine session ID
+    if not session_id or session_id == "null":
+        final_session_id = str(uuid.uuid4())
+    else:
+        final_session_id = session_id
+
+    # Create session directory
+    session_dir = os.path.join(UPLOAD_DIR, final_session_id)
+    os.makedirs(session_dir, exist_ok=True)
+
     # Save uploaded file
     file_id = str(uuid.uuid4())
     extension = file.filename.split(".")[-1]
     # Use absolute path for robustness in WSL
-    file_path = os.path.abspath(os.path.join(UPLOAD_DIR, f"{file_id}.{extension}"))
+    file_path = os.path.abspath(os.path.join(session_dir, f"{file_id}.{extension}"))
     
     try:
         with open(file_path, "wb") as buffer:
@@ -105,6 +115,7 @@ async def process_image(file: UploadFile = File(...), type: str = Form("table"))
             media_type="text/plain",  
             headers={
                 "X-File-ID": file_id,
+                "X-Session-ID": final_session_id,
                 "X-Filename": file.filename,
                 "X-OCR-Type": type
             }
@@ -197,11 +208,21 @@ async def delete_session(session_id: str):
     filename = f"table_{safe_id}.json"
     filepath = os.path.join(DATA_DIR, filename)
     
+    # Delete JSON data
     if os.path.exists(filepath):
         os.remove(filepath)
-        return {"status": "success", "message": "Session deleted"}
-    else:
-        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Delete uploads directory for this session
+    session_upload_dir = os.path.join(UPLOAD_DIR, safe_id)
+    if os.path.exists(session_upload_dir):
+        try:
+            shutil.rmtree(session_upload_dir)
+        except Exception as e:
+            print(f"Error deleting session directory {session_upload_dir}: {e}")
+            # We continue even if this fails, but ideally we should log it
+            pass
+            
+    return {"status": "success", "message": "Session deleted"}
 
 @app.get("/history")
 async def get_history():

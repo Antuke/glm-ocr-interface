@@ -193,6 +193,7 @@ async function uploadFile(file) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('type', currentSessionType);
+    formData.append('session_id', currentSessionId || '');
     
     currentAbortController = new AbortController();
     
@@ -209,6 +210,13 @@ async function uploadFile(file) {
         }
         
         const filename = response.headers.get('X-Filename') || file.name;
+        
+        // Update session ID if we started a new session
+        const newSessionId = response.headers.get('X-Session-ID');
+        if (!currentSessionId && newSessionId) {
+            currentSessionId = newSessionId;
+        }
+
         const contentElement = addTableToWorkspace('', filename);
         
         const reader = response.body.getReader();
