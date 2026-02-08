@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.concurrency import run_in_threadpool
 import shutil
 import os
@@ -65,14 +65,46 @@ async def process_image(file: UploadFile = File(...), type: str = Form("table"))
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        print(f"Processing image: {file_path} with mode: {type}")
-        # Run inference in threadpool to allow concurrency (e.g. for cancel request)
-        result_html = await run_in_threadpool(ocr_model.process_image, file_path, type=type)
+        print(f"Processing image (Stream): {file_path} with mode: {type}")
         
-        if result_html == "<!-- Process Aborted -->":
-            raise HTTPException(status_code=499, detail="Processing aborted by user")
+        async def response_generator():
+            # Run the blocking iterator in a threadpool to keep the event loop free
+            def sync_gen():
+                for chunk in ocr_model.process_image_stream(file_path, type=type):
+                    yield chunk
+
+            # We iterate over the sync generator in chunks
+            # Using run_in_threadpool for the whole thing or chunk by chunk?
+            # Iterating a thread-based streamer is safest in a separate thread.
+            import asyncio
+            loop = asyncio.get_event_loop()
+            gen = sync_gen()
             
-        return {"id": file_id, "html": result_html, "filename": file.filename}
+            while True:
+                try:
+                    # Get next chunk in a threadpool
+                    chunk = await run_in_threadpool(next, gen)
+                    if chunk == "<!-- Process Aborted -->":
+                        yield chunk
+                        break
+                    yield chunk
+                except StopIteration:
+                    break
+                except Exception as e:
+                    print(f"Streaming error: {e}")
+                    yield f"<!-- Error: {str(e)} -->"
+                    break
+
+        return StreamingResponse(
+            response_generator(), 
+            media_type="text/plain", 
+            headers={
+                "X-File-ID": file_id,
+                "X-Filename": file.filename,
+                "X-OCR-Type": type
+            }
+        )
+
     except HTTPException as he:
         raise he
     except Exception as e:

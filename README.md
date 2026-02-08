@@ -4,6 +4,7 @@ A comprehensive web interface built with FastAPI that leverages the [GLM-OCR](ht
 
 ## ✨ Features
 
+- **Streaming Output:** Real-time token streaming allows you to see the OCR results as they are being generated.
 - **Dual Extraction Modes:**
   - **Table Recognition:** Optimized for extracting and reconstructing complex tables into HTML/CSV.
   - **Text Extraction:** Uses a text-focused prompt to transcribe documents into editable text.

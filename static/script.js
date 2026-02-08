@@ -208,8 +208,43 @@ async function uploadFile(file) {
             throw new Error(errorData.detail || 'OCR Failed');
         }
         
-        const data = await response.json();
-        addTableToWorkspace(data.html, data.filename);
+        const filename = response.headers.get('X-Filename') || file.name;
+        const contentElement = addTableToWorkspace('', filename);
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedHtml = '';
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = decoder.decode(value, { stream: true });
+            
+            if (chunk.includes("<!-- Process Aborted -->")) {
+                console.log("Processing aborted by user (via stream signal)");
+                break;
+            }
+            
+            accumulatedHtml += chunk;
+            
+            // Update the UI
+            if (currentSessionType === 'text') {
+                contentElement.innerText = accumulatedHtml;
+            } else {
+                contentElement.innerHTML = accumulatedHtml;
+            }
+            
+            // Auto-scroll to bottom of the content element if it's getting long
+            // Actually, usually the workspace handles it, but maybe scroll into view?
+            // contentElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+
+        // Finalize editability and saving
+        if (currentSessionType === 'table') {
+            // Re-apply editability to cells if it's a table
+            makeEditable(contentElement.parentElement);
+        }
         
     } catch (err) {
         if (err.name === 'AbortError') {
@@ -220,6 +255,7 @@ async function uploadFile(file) {
         alert(`Error processing ${file.name}: ${err.message}`);
     } finally {
         currentAbortController = null;
+        loader.style.display = 'none';
     }
     
     uploadZone.style.display = 'none';
@@ -260,6 +296,7 @@ function addTableToWorkspace(htmlContent, title = "Table") {
     
     wrapper.appendChild(div);
     makeEditable(div);
+    return div.querySelector('.text-content') || div.querySelector('.table-content');
 }
 
 function makeEditable(container) {
